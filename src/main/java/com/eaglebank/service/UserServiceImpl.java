@@ -22,6 +22,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
@@ -47,17 +48,15 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserResponse createUser(CreateUserRequest request) {
+        if (userRepository.findByEmail(request.email()).isPresent()) {
+            throw new ConflictException("Email already exists");
+        }
+
         Address address = Address.builder()
                 .line1(request.address().line1())
-                .line2(request.address().line2())
-                .line3(request.address().line3())
-                .town(request.address().town())
-                .county(request.address().county())
-                .postcode(request.address().postcode())
                 .build();
 
-
-        User user = User.builder()
+        User toSave = User.builder()
                 .name(request.name())
                 .email(request.email())
                 .phoneNumber(request.phoneNumber())
@@ -65,14 +64,12 @@ public class UserServiceImpl implements UserService {
                 .address(address)
                 .build();
 
-        if (userRepository.findByEmail(request.email()).isPresent()) {
-            throw new ConflictException("Email already exists");
-        }
+        // save and grab the persisted entity (now has ID + timestamps)
+        User savedUser = userRepository.save(toSave);
 
-        User savedUser = userRepository.save(user);
-
+        // return using savedUser, not the pre-save 'user'
         return new UserResponse(
-                user.getId().toString(),
+                savedUser.getId().toString(),
                 savedUser.getName(),
                 savedUser.getEmail(),
                 savedUser.getPhoneNumber(),
@@ -81,6 +78,7 @@ public class UserServiceImpl implements UserService {
                 savedUser.getUpdatedTimestamp()
         );
     }
+
 
     @Override
     public UserResponse getUserById(UUID userId, Authentication authentication) {
@@ -95,20 +93,12 @@ public class UserServiceImpl implements UserService {
             throw new ForbiddenException("You are not authorised to access this user's information");
         }
 
-        AddressResponse addressResponse = new AddressResponse(
-                user.getAddress().getLine1(),
-                user.getAddress().getLine2(),
-                user.getAddress().getLine3(),
-                user.getAddress().getTown(),
-                user.getAddress().getCounty(),
-                user.getAddress().getPostcode()
-        );
         return new UserResponse(
                 user.getId().toString(),
                 user.getName(),
                 user.getEmail(),
                 user.getPhoneNumber(),
-                addressResponse,
+                toAddressResponse(user.getAddress()),
                 user.getCreatedTimestamp(),
                 user.getUpdatedTimestamp()
         );
@@ -119,8 +109,7 @@ public class UserServiceImpl implements UserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        String authEmail = authentication.getName();
-        if (!user.getEmail().equals(authEmail)) {
+        if (!user.getEmail().equals(authentication.getName())) {
             throw new ForbiddenException("You are not authorised to update this user's information");
         }
 

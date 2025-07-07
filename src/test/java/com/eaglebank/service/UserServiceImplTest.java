@@ -73,6 +73,19 @@ class UserServiceImplTest {
                 .build();
     }
 
+    @Test
+    void testCreateUser_success() {
+        when(userRepository.findByEmail(request.email())).thenReturn(Optional.empty());
+        when(passwordEncoder.encode(request.password())).thenReturn("hashedPassword");
+        when(userRepository.save(any(User.class))).thenReturn(user);
+
+        UserResponse response = userService.createUser(request);
+
+        assertNotNull(response);
+        assertEquals("jane.smith@example.com", response.email());
+        assertEquals("Jane Smith", response.name());
+        verify(userRepository).save(any(User.class));
+    }
 
     @Test
     void testCreateUser_conflictEmailAlreadyExists() {
